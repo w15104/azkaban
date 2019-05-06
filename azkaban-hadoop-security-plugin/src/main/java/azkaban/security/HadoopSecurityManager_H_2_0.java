@@ -74,9 +74,11 @@ import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
+import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
+import org.apache.hadoop.yarn.security.client.TimelineDelegationTokenIdentifier;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
@@ -125,6 +127,7 @@ public class HadoopSecurityManager_H_2_0 extends HadoopSecurityManager {
   private static final String AZKABAN_PRINCIPAL = "proxy.user";
   private static final String OBTAIN_JOBHISTORYSERVER_TOKEN =
       "obtain.jobhistoryserver.token";
+  private static final String OBTAIN_TIMELINE_TOKEN = "obtain.timeline.token";
   private final static Logger logger = Logger
       .getLogger(HadoopSecurityManager_H_2_0.class);
   private static volatile HadoopSecurityManager hsmInstance = null;
@@ -404,6 +407,8 @@ public class HadoopSecurityManager_H_2_0 extends HadoopSecurityManager {
           logger.info("Ignore cancelling namenode token request.");
         } else if (t.getKind().equals(new Text("MR_DELEGATION_TOKEN"))) {
           logger.info("Ignore cancelling jobhistoryserver mr token request.");
+        } else if (t.getKind().equals(new Text("TIMELINE_DELEGATION_TOKEN"))) {
+          logger.info("Ignore cancelling timeline token request.");
         } else {
           logger.info("unknown token type " + t.getKind());
         }
@@ -501,6 +506,8 @@ public class HadoopSecurityManager_H_2_0 extends HadoopSecurityManager {
           fetchNameNodeToken(userToProxy, props, logger, cred);
 
           fetchJobTrackerToken(userToProxy, props, logger, cred);
+
+          fetchTimelineToken(props, logger, userToProxy, cred);
 
         }
       });
@@ -616,6 +623,30 @@ public class HadoopSecurityManager_H_2_0 extends HadoopSecurityManager {
               jhsdt.getKind(), jhsdt.getService()));
 
       cred.addToken(jhsdt.getService(), jhsdt);
+    }
+  }
+
+  private void fetchTimelineToken(final Props props, final Logger logger, final String userToProxy,
+                                  final Credentials cred) throws HadoopSecurityManagerException {
+    if (props.getBoolean(OBTAIN_TIMELINE_TOKEN, false)) {
+      final TimelineClient timelineClient = TimelineClient.createTimelineClient();
+      logger.info("Pre-fetching TL token from Timeline server");
+      timelineClient.init(HadoopSecurityManager_H_2_0.this.conf);
+      Token<TimelineDelegationTokenIdentifier> tldt = null;
+      try {
+        tldt = timelineClient.getDelegationToken(getMRTokenRenewerInternal(new JobConf()).toString());
+      } catch (final Exception e){
+        logger.error("Failed to fetch TL token");
+        throw new HadoopSecurityManagerException("Failed to fetch TL token for " + userToProxy);
+      }
+      if (tldt == null) {
+        logger.error("Failed to fetch TL token");
+        throw new HadoopSecurityManagerException("Failed to fetch TL token for " + userToProxy);
+      }
+      logger.info("Created TL token");
+      logger.info("Token kind: " + tldt.getKind());
+      logger.info("Token service: " + tldt.getService());
+      cred.addToken(tldt.getService(), tldt);
     }
   }
 

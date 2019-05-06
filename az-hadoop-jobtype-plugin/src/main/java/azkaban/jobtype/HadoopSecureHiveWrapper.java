@@ -89,8 +89,17 @@ public class HadoopSecureHiveWrapper {
           System.getenv(HADOOP_TOKEN_FILE_LOCATION));
       System.setProperty(MAPREDUCE_JOB_CREDENTIALS_BINARY,
           System.getenv(HADOOP_TOKEN_FILE_LOCATION));
+      //add by w15654
+      if ("tez".equalsIgnoreCase(hiveConf.get("hive.execution.engine"))) {
+        logger.info("The hive execution engine is tez");
+        hiveConf.set("tez.credentials.path", System.getenv(HADOOP_TOKEN_FILE_LOCATION));
+        System.setProperty("tez.credentials.path", System.getenv(HADOOP_TOKEN_FILE_LOCATION));
+      }
+      //Since we use delegation token in HIVE, unset the SPNEGO authentication if it is enabled
+      hiveConf.unset("hive.server2.authentication.spnego.keytab");
+      hiveConf.unset("hive.server2.authentication.spnego.principal");
     }
-
+    
     logger.info("HiveConf = " + hiveConf);
     logger.info("According to the conf, we're talking to the Hive hosted at: "
         + HiveConf.getVar(hiveConf, METASTORECONNECTURLKEY));
